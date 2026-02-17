@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Project**: [Project Name]
-**Goal**: [Primary objective]
-**Stack**: [Technologies / platforms]
+**Project**: Copilot — GitHub Daily Digest & Reusable CI/CD Workflows
+**Goal**: Automated daily digest of GitHub activity across 50+ repos + reusable workflow library
+**Stack**: TypeScript, Node.js, @octokit/rest, GitHub Actions, Jest
 
 ---
 
@@ -14,21 +14,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Root Files
 - `CLAUDE.md` - Claude Code instructions (this file)
-- [Other root-level files that stay at root]
+- `package.json`, `tsconfig.json`, `jest.config.ts` - Project config
+
+### src/
+- `src/config.ts` - Config from env vars (GITHUB_TOKEN, DIGEST_REPO, LOOKBACK_HOURS)
+- `src/index.ts` - Entry point: collect -> analyze -> format -> publish
+- `src/digest/collector.ts` - GitHub API calls, paginated repo/event fetching
+- `src/digest/analyzer.ts` - Classify activity, flag CI failures, identify review gaps
+- `src/digest/formatter.ts` - Render markdown digest with sections
+- `src/digest/publisher.ts` - Post digest as GitHub Issue with label
+
+### .github/workflows/
+- `daily-digest.yml` - Cron (7AM AWST) + manual trigger for digest
+- `ci.yml` - Local CI that dog-foods reusable-ci.yml
+- `reusable-ci.yml` - Reusable: commitlint, test, build, security, notify
+- `reusable-claude-review.yml` - Reusable: AI code review with must-fix issue creation
+- `reusable-release-please.yml` - Reusable: release management
+- `reusable-review-gate.yml` - Reusable: blocks PR until review issues resolved
+
+### tests/
+- `tests/collector.test.ts` - Collector unit tests (mocked Octokit)
+- `tests/analyzer.test.ts` - Analyzer unit tests
+- `tests/formatter.test.ts` - Formatter output tests
+- `tests/publisher.test.ts` - Publisher unit tests (mocked Octokit)
 
 ### session-context/
-CLAUDE memory bank files (managed by /start skill):
-- `CLAUDE-activeContext.md` - Current session state, goals, progress
-- `CLAUDE-decisions.md` - Architecture decisions and rationale
-- `CLAUDE-patterns.md` - Established code patterns and conventions
-- `CLAUDE-troubleshooting.md` - Common issues and proven solutions
-- `CLAUDE-soul-purpose.md` - Soul purpose definition
-
-### scripts/
-- `scripts/[category]/` - [Description]
-
-### docs/
-- `docs/[category]/` - [Description]
+CLAUDE memory bank files (managed by /start skill)
 
 ---
 
@@ -76,9 +87,28 @@ Potential Issues to face:
 
 ## Common Commands
 
-### [Category]
+### Development
 ```bash
-[Useful command]
+npm test                          # Run all 28 unit tests
+npm run build                     # TypeScript compile to dist/
+npm run lint                      # Type check without emit
+GITHUB_TOKEN=$(gh auth token) npx tsx src/index.ts  # Run digest locally
+```
+
+### GitHub Actions
+```bash
+gh workflow run daily-digest.yml --repo anombyte93/copilot  # Manual trigger
+gh run list --repo anombyte93/copilot                       # Check run status
+```
+
+### Consuming Reusable Workflows (in other repos)
+```yaml
+# In .github/workflows/ci.yml of any repo:
+jobs:
+  ci:
+    uses: anombyte93/copilot/.github/workflows/reusable-ci.yml@v1
+    with:
+      node-version: '22'
 ```
 
 ---
@@ -86,13 +116,22 @@ Potential Issues to face:
 ## Current Status
 
 ### DONE
-- [Completed items]
+- Digest engine (collector, analyzer, formatter, publisher)
+- 4 reusable workflows extracted from canva-resume-fixer
+- Daily digest cron workflow (7AM AWST)
+- Self-consuming CI (dog-food)
+- 28 unit tests, all passing
+- First real digest posted (Issue #1)
+- GitHub Actions workflow_dispatch verified
 
 ### NEED TO DO
-- [Remaining items]
+- Tag v1.0.0 for reusable workflow references
+- Onboard first external repo (atlas-session-lifecycle)
+- Playwright visual verification of digest issue
 
 ### CRITICAL WARNINGS
-- [Important warnings]
+- GITHUB_TOKEN needs repo + workflow scopes for full digest coverage
+- Rate limiting: 50+ repos = many API calls. Currently sequential per-repo.
 
 ---
 
