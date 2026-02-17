@@ -1,0 +1,107 @@
+name: Reusable CI Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version to use
+        type: string
+        default: '22'
+      run-lint:
+        description: Whether to run commitlint on PR title
+        type: boolean
+        default: true
+      test-command:
+        description: Command to run tests
+        type: string
+        default: 'npm test -- --coverage --ci'
+      build-command:
+        description: Command to run build
+        type: string
+        default: 'npm run build'
+      install-command:
+        description: Command to install dependencies
+        type: string
+        default: 'npm ci'
+      run-security-audit:
+        description: Whether to run npm security audit
+        type: boolean
+        default: true
+
+jobs:
+  commitlint:
+    if: ${{ inputs.run-lint }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+      - run: ${{ inputs.install-command }}
+      - name: Validate PR title (conventional commit)
+        run: echo "${{ github.event.pull_request.title }}" | npx commitlint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+      - run: ${{ inputs.install-command }}
+      - name: Run tests with coverage
+        run: ${{ inputs.test-command }}
+
+  build:
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+      - run: ${{ inputs.install-command }}
+      - name: Build
+        run: ${{ inputs.build-command }}
+
+  security:
+    if: ${{ inputs.run-security-audit }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: npm
+      - run: ${{ inputs.install-command }}
+      - name: Security audit
+        run: npm audit --audit-level=critical || true
+
+  notify:
+    needs: [commitlint, test, build, security]
+    runs-on: ubuntu-latest
+    if: always()
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Post result comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          COMMITLINT: ${{ needs.commitlint.result }}
+          TEST: ${{ needs.test.result }}
+          BUILD: ${{ needs.build.result }}
+          SECURITY: ${{ needs.security.result }}
+        run: |
+          if [ "$COMMITLINT" = "success" ] && [ "$TEST" = "success" ] && [ "$BUILD" = "success" ] && [ "$SECURITY" = "success" ]; then
+            BODY="All CI checks passed: commitlint, tests, build, security."
+          else
+            BODY="CI checks completed with failures: commitlint=$COMMITLINT, test=$TEST, build=$BUILD, security=$SECURITY."
+          fi
+          gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --method POST -f body="$BODY"

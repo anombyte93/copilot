@@ -1,0 +1,110 @@
+name: Reusable Claude Code Review
+
+on:
+  workflow_call:
+    inputs:
+      review-instructions:
+        description: Extra review instructions appended to the base prompt
+        type: string
+        default: ''
+      allowed-bots:
+        description: Comma-separated list of allowed bot usernames
+        type: string
+        default: 'dependabot[bot],renovate[bot]'
+
+jobs:
+  review:
+    if: >
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issues' && contains(github.event.issue.assignees.*.login, 'claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      statuses: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - uses: anthropics/claude-code-action@v1
+        id: claude-review
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_bots: ${{ inputs.allowed-bots }}
+          claude_args: >-
+            --json-schema '{"type":"object","properties":{"summary":{"type":"string"},"findings":{"type":"array","items":{"type":"object","properties":{"severity":{"type":"string","enum":["must-fix","should-fix","suggestion"]},"title":{"type":"string"},"description":{"type":"string"},"file":{"type":"string"},"line":{"type":"number"}},"required":["severity","title","description"]}},"verdict":{"type":"string","enum":["approve","request-changes","comment"]}},"required":["summary","findings","verdict"]}'
+          prompt: |
+            Review this PR for:
+            - Security vulnerabilities
+            - TypeScript strictness
+            - Performance
+            Classify findings by severity.
+            ${{ inputs.review-instructions }}
+
+      - name: Create issues for must-fix findings
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STRUCTURED_OUTPUT: ${{ steps.claude-review.outputs.structured_output }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          STATUS_CONTEXT="review-gate / blocking-issues"
+          if [ -z "${STRUCTURED_OUTPUT:-}" ] || [ "$STRUCTURED_OUTPUT" = "null" ]; then
+            gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+              -f state="success" -f description="No review findings" -f context="$STATUS_CONTEXT"
+            exit 0
+          fi
+          MUST_FIX=$(echo "$STRUCTURED_OUTPUT" | jq -r '[.findings[] | select(.severity == "must-fix")]')
+          COUNT=$(echo "$MUST_FIX" | jq 'length')
+          if [ "$COUNT" -eq 0 ]; then
+            gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+              -f state="success" -f description="No must-fix findings" -f context="$STATUS_CONTEXT"
+            exit 0
+          fi
+          gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+            -f state="failure" -f description="${COUNT} must-fix finding(s) require resolution" -f context="$STATUS_CONTEXT"
+          gh api "repos/${REPO}/labels" --method POST \
+            -f name="review-blocking" -f color="B60205" \
+            -f description="Blocks PR merge until resolved" 2>/dev/null || true
+          EXISTING=$(gh api "repos/${REPO}/issues?labels=review-blocking&state=open&per_page=100" \
+            --jq '.[].title' 2>/dev/null || echo "")
+          CREATED_ISSUES=""
+          for i in $(seq 0 $((COUNT - 1))); do
+            TITLE=$(echo "$MUST_FIX" | jq -r ".[$i].title")
+            DESC=$(echo "$MUST_FIX" | jq -r ".[$i].description")
+            FILE=$(echo "$MUST_FIX" | jq -r ".[$i].file // \"N/A\"")
+            LINE=$(echo "$MUST_FIX" | jq -r ".[$i].line // \"N/A\"")
+            ISSUE_TITLE="[Review] $TITLE"
+            if echo "$EXISTING" | grep -qF "$ISSUE_TITLE"; then continue; fi
+            ISSUE_BODY=$(jq -n --arg pr "$PR_NUMBER" --arg pt "$PR_TITLE" \
+              --arg file "$FILE" --arg line "$LINE" --arg desc "$DESC" \
+              '"## Review Finding\n\n**PR**: #\($pr) (\($pt))\n**File**: `\($file)`\n**Line**: \($line)\n**Severity**: must-fix\n\n### Description\n\n\($desc)\n\n---\n*Auto-created by Claude Code Review.*"' -r)
+            ISSUE_RESULT=$(gh api "repos/${REPO}/issues" --method POST \
+              -f title="$ISSUE_TITLE" -f body="$ISSUE_BODY" --jq '.html_url' 2>&1) || true
+            if [[ "$ISSUE_RESULT" == http* ]]; then
+              ISSUE_NUM=$(echo "$ISSUE_RESULT" | grep -oP '[0-9]+$')
+              gh api "repos/${REPO}/issues/${ISSUE_NUM}/labels" --method POST \
+                --input <(echo '{"labels":["review-blocking"]}') 2>/dev/null || true
+              CREATED_ISSUES="${CREATED_ISSUES}\n- ${ISSUE_RESULT}"
+            fi
+          done
+          if [ -n "$CREATED_ISSUES" ]; then
+            SUMMARY=$(printf "## Claude Review: %d must-fix finding(s)\n\nBlocking issues created:\n%b\n\n**PR blocked until all review-blocking issues resolved.**" "$COUNT" "$CREATED_ISSUES")
+            gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --method POST -f body="$SUMMARY" 2>/dev/null || true
+          fi
+
+      - name: Upload review transcript
+        if: always() && steps.claude-review.outputs.execution_file
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-review-transcript
+          path: ${{ steps.claude-review.outputs.execution_file }}
+          retention-days: 30

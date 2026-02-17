@@ -1,0 +1,42 @@
+name: Reusable Review Gate
+
+on:
+  workflow_call:
+
+jobs:
+  review-gate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      statuses: write
+    steps:
+      - name: Re-evaluate blocking status
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_ACTION: ${{ github.event.action }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER=$(echo "$ISSUE_BODY" | grep -oP '(?:\*\*)?PR(?:\*\*)?: #\K[0-9]+' | head -1)
+          if [ -z "$PR_NUMBER" ]; then exit 0; fi
+          HEAD_SHA=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json headRefOid --jq '.headRefOid')
+          if [ -z "$HEAD_SHA" ]; then exit 0; fi
+          OPEN_BLOCKERS=$(gh issue list --repo "$REPO" --label "review-blocking" --state open --json body \
+            --jq "[.[] | select(.body | test(\"PR.*#${PR_NUMBER}[^0-9]\"))] | length")
+          if [ "$OPEN_BLOCKERS" -eq 0 ]; then
+            STATE="success"; DESCRIPTION="All review-blocking issues resolved"
+          else
+            STATE="failure"; DESCRIPTION="${OPEN_BLOCKERS} review-blocking issue(s) remain"
+          fi
+          gh api --method POST "repos/${REPO}/statuses/${HEAD_SHA}" \
+            -f state="$STATE" -f description="$DESCRIPTION" -f context="review-gate / blocking-issues"
+          if [ "$STATE" = "success" ]; then
+            COMMENT="All review-blocking issues resolved. PR unblocked."
+          else
+            COMMENT="Issue ${ISSUE_TITLE} was ${ISSUE_ACTION}. ${OPEN_BLOCKERS} blocking issue(s) remain."
+          fi
+          gh pr comment "$PR_NUMBER" --repo "$REPO" --body "$COMMENT"

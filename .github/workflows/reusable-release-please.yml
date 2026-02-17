@@ -1,0 +1,31 @@
+name: Reusable Release Please
+
+on:
+  workflow_call:
+    inputs:
+      release-type:
+        description: The release type (e.g. node, python, java)
+        type: string
+        default: 'node'
+      config-file:
+        description: Path to release-please config file
+        type: string
+        default: 'release-please-config.json'
+      manifest-file:
+        description: Path to release-please manifest file
+        type: string
+        default: '.release-please-manifest.json'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          release-type: ${{ inputs.release-type }}
+          config-file: ${{ inputs.config-file }}
+          manifest-file: ${{ inputs.manifest-file }}
