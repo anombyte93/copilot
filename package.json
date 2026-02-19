@@ -1,7 +1,7 @@
 {
-  "name": "copilot",
+  "name": "atlas-copilot",
   "version": "1.0.0",
-  "description": "GitHub daily digest engine with reusable CI/CD workflows",
+  "description": "Atlas-Copilot — Reusable CI/CD and Claude Code review workflows for GitHub repositories",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

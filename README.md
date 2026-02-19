@@ -1,4 +1,4 @@
-# Copilot — Reusable GitHub Actions Workflows
+# Atlas-Copilot — Reusable CI/CD Workflows
 
 Reusable CI/CD and Claude Code review workflows for GitHub repositories.
 
@@ -17,7 +17,7 @@ on:
 
 jobs:
   ci:
-    uses: anombyte93/copilot/.github/workflows/reusable-ci.yml@v1
+    uses: anombyte93/atlas-copilot/.github/workflows/reusable-ci.yml@v1
     with:
       node-version: '22'
       test-command: 'npm test -- --coverage --ci'
@@ -40,7 +40,7 @@ on:
 
 jobs:
   review:
-    uses: anombyte93/copilot/.github/workflows/reusable-claude-review.yml@v1
+    uses: anombyte93/atlas-copilot/.github/workflows/reusable-claude-review.yml@v1
     secrets: inherit
     with:
       review-instructions: 'Focus on security and performance.'
@@ -94,7 +94,7 @@ The CI pipeline uses only `github.token` (automatic).
 Use the `@v1` tag for stable releases:
 
 ```yaml
-uses: anombyte93/copilot/.github/workflows/reusable-ci.yml@v1
+uses: anombyte93/atlas-copilot/.github/workflows/reusable-ci.yml@v1
 ```
 
 Breaking changes will increment the major version tag.
