@@ -1,6 +1,10 @@
-# Atlas-Copilot — Reusable CI/CD Workflows
+# Atlas-Copilot — Self-Hosted CI/CD & AI Review
 
 Reusable CI/CD and Claude Code review workflows for GitHub repositories.
+
+**Free forever. Self-hosted. No vendor lock-in.**
+
+> Bring your own Anthropic API key — your code never leaves your infrastructure.
 
 ## Quick Start
 
@@ -92,6 +96,25 @@ The CI pipeline uses only `github.token` (automatic).
 ## Versioning
 
 Use the `@v1` tag for stable releases:
+
+```yaml
+uses: anombyte93/atlas-copilot/.github/workflows/reusable-ci.yml@v1
+```
+
+Breaking changes will increment the major version tag.
+
+## Why Atlas-Copilot?
+
+| Feature | Atlas-Copilot | CodeRabbit | Graphite |
+|---------|---------------|------------|----------|
+| **Cost** | Free (BYO key) | $12-24/user/mo | $20-40/user/mo |
+| **Self-hosted** | ✅ Yes | Partial | ❌ No |
+| **Code stays private** | ✅ Your infra | ❌ Sent to SaaS | ❌ Sent to SaaS |
+| **LLM choice** | Any Claude model | Gemini only | Proprietary |
+| **Reusable workflows** | ✅ Copy-paste YAML | ❌ App only | ❌ App only |
+| **Vendor lock-in** | ❌ None | ✅ Platform | ✅ Platform |
+
+**Bring your own Anthropic API key** — your code never leaves your GitHub infrastructure.
 
 ```yaml
 uses: anombyte93/atlas-copilot/.github/workflows/reusable-ci.yml@v1
