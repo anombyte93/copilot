@@ -125,7 +125,6 @@ jobs:
 - GitHub Actions workflow_dispatch verified
 
 ### NEED TO DO
-- Tag v1.0.0 for reusable workflow references
 - Onboard first external repo (atlas-session-lifecycle)
 - Playwright visual verification of digest issue
 
